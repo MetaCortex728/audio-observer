@@ -7,6 +7,7 @@ add_executable(audio_observer_tests
     test_backend.cpp
     test_block_queue.cpp
     test_core_types.cpp
+    test_dropout_detector.cpp
     test_meters.cpp
     test_session.cpp
     test_spsc_ring_buffer.cpp

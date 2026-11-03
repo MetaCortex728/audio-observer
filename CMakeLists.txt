@@ -50,6 +50,7 @@ add_library(audio_observer STATIC
     src/audio_format.cpp
     src/backend.cpp
     src/block_queue.cpp
+    src/dropout_detector.cpp
     src/meters.cpp
     src/sample_clock.cpp
     src/session.cpp

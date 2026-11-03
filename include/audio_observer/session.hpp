@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "audio_observer/backend.hpp"
+#include "audio_observer/dropout_detector.hpp"
 #include "audio_observer/meters.hpp"
 #include "audio_observer/stream_info.hpp"
 
@@ -31,6 +32,8 @@ struct SessionConfig {
     MeterConfig meter;
     /// Capacity of each stream's queue, in seconds of audio.
     double queue_seconds = 2.0;
+    /// Glitch events kept per stream (all are counted).
+    std::size_t max_events_per_stream = 16;
     /// How long the consumer sleeps when no stream has data.
     std::chrono::milliseconds poll_interval{2};
 };
@@ -58,6 +61,7 @@ struct StreamSummary {
     std::uint64_t flagged_blocks = 0;
     MeterReading levels;                 ///< Whole stream.
     std::vector<MeterReading> channels;  ///< One per channel.
+    DropoutReport dropouts;              ///< Gaps, overlaps, flags and overruns.
 };
 
 struct SessionSummary {

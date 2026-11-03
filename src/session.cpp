@@ -57,6 +57,7 @@ struct ActiveStream {
     std::unique_ptr<BlockQueue> queue;
     std::unique_ptr<CaptureStream> stream;
     std::optional<StreamMeter> meter;
+    std::optional<DropoutDetector> detector;
     std::uint64_t blocks = 0;
     std::uint64_t frames = 0;
     std::uint64_t flagged_blocks = 0;
@@ -74,6 +75,7 @@ bool drain(ActiveStream& active) {
         if (delivered.flags != 0) {
             ++active.flagged_blocks;
         }
+        active.detector->observe(delivered);
         active.meter->process(delivered.block);
     }
     return any;
@@ -109,6 +111,7 @@ SessionSummary Session::run(const std::atomic<bool>* stop_request) {
                                                         capacity / std::max<std::size_t>(max_block / 4, 1) + 4,
                                                         max_block);
             active.meter.emplace(format.sample_rate_hz, format.channel_count, config_.meter);
+            active.detector.emplace(format.sample_rate_hz, config_.max_events_per_stream);
             streams.push_back(std::move(active));
         }
         for (ActiveStream& active : streams) {
@@ -155,7 +158,7 @@ SessionSummary Session::run(const std::atomic<bool>* stop_request) {
     }
 
     summary.elapsed_seconds = std::chrono::duration<double>(host_now() - begin).count();
-    for (const ActiveStream& active : streams) {
+    for (ActiveStream& active : streams) {
         StreamSummary s;
         s.label = active.request.label;
         s.info = active.stream->info();
@@ -169,6 +172,11 @@ SessionSummary Session::run(const std::atomic<bool>* stop_request) {
             for (std::size_t c = 0; c < active.meter->channel_count(); ++c) {
                 s.channels.push_back(active.meter->channel(c));
             }
+        }
+        if (active.detector) {
+            // The stream has stopped, so the queue's totals are final.
+            active.detector->finish(active.queue->overrun_count(), active.queue->overrun_frames());
+            s.dropouts = active.detector->report();
         }
         summary.streams.push_back(std::move(s));
     }
