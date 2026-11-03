@@ -48,7 +48,7 @@ The session was `completed` in 10.058 s with exit status 0, and the Windows defa
 
 ## Quick start on Windows
 
-You need Visual Studio 2022 with the C++ workload (it includes CMake and the Windows SDK). From a Developer PowerShell in the repository:
+You need Visual Studio 2022 or 2026 with the C++ workload, which includes CMake, Ninja and the Windows SDK. Run these commands from a Developer PowerShell (or an "x64 Native Tools" command prompt) for Visual Studio, in the repository:
 
 ```powershell
 cmake --preset msvc

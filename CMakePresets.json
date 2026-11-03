@@ -51,11 +51,11 @@
     },
     {
       "name": "msvc",
-      "displayName": "MSVC (Visual Studio 2022)",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
+      "displayName": "MSVC (run from a Visual Studio x64 developer environment)",
+      "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "cl",
         "AUDIO_OBSERVER_BUILD_TESTS": "ON",
         "AUDIO_OBSERVER_WARNINGS_AS_ERRORS": "ON"
       },

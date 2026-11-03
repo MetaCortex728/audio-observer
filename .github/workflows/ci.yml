@@ -56,6 +56,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up the MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      # The msvc preset uses the Ninja Multi-Config generator. Ninja ships with
+      # GitHub's Windows images (and with Visual Studio's C++ workload), so it
+      # is not installed here.
       - name: Configure
         run: cmake --preset msvc
       - name: Build
