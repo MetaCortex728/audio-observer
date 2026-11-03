@@ -8,6 +8,7 @@ add_executable(audio_observer_tests
     test_block_queue.cpp
     test_core_types.cpp
     test_meters.cpp
+    test_session.cpp
     test_spsc_ring_buffer.cpp
     test_version.cpp)
 target_link_libraries(audio_observer_tests PRIVATE

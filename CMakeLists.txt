@@ -52,6 +52,7 @@ add_library(audio_observer STATIC
     src/block_queue.cpp
     src/meters.cpp
     src/sample_clock.cpp
+    src/session.cpp
     src/synthetic_backend.cpp
     src/version.cpp)
 add_library(audio_observer::audio_observer ALIAS audio_observer)
