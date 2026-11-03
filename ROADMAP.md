@@ -8,7 +8,7 @@ audio-observer captures several audio streams at once and diagnoses their health
 
 ## Stage 1: C++ foundation (done, November 2026)
 
-All eight items are implemented and tested with the synthetic backend on Linux (GCC, Clang, AddressSanitizer, ThreadSanitizer) and Windows (MSVC). The WASAPI backend's endpoint listing has run on real hardware; capture on real hardware is still to be run with the owner's go-ahead.
+All eight items are implemented and tested with the synthetic backend on Linux (GCC, Clang, AddressSanitizer, ThreadSanitizer) and Windows (MSVC). The WASAPI backend has also run on real hardware (3 November 2026, with the owner's go-ahead): endpoint listing, and a 10-second microphone and loopback capture on a USB headset that completed with no gaps or overruns. That run showed WASAPI flagging each stream's first packet as discontinuous; this is now recorded separately (`start_discontinuity`) instead of being counted as a fault.
 
 1. **Build and project setup:** CMake presets, C++17, doctest, warnings as errors, a Docker development image, CI on Linux and Windows, Apache-2.0 licence.
 2. **Core types:** a multi-channel audio frame with any number of channels, a per-stream sample clock with sample-accurate positions and host timestamps, and stream descriptions that can carry device geometry later.
