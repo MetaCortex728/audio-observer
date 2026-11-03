@@ -2,10 +2,10 @@ add_library(doctest INTERFACE)
 target_include_directories(doctest SYSTEM INTERFACE
     ${PROJECT_SOURCE_DIR}/third_party/doctest)
 
-find_package(Threads REQUIRED)
-
 add_executable(audio_observer_tests
     main.cpp
+    test_backend.cpp
+    test_block_queue.cpp
     test_core_types.cpp
     test_meters.cpp
     test_spsc_ring_buffer.cpp

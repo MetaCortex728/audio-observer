@@ -43,11 +43,16 @@ else()
     endif()
 endif()
 
+find_package(Threads REQUIRED)
+
 # Core library: standard library only, no audio API.
 add_library(audio_observer STATIC
     src/audio_format.cpp
+    src/backend.cpp
+    src/block_queue.cpp
     src/meters.cpp
     src/sample_clock.cpp
+    src/synthetic_backend.cpp
     src/version.cpp)
 add_library(audio_observer::audio_observer ALIAS audio_observer)
 target_include_directories(audio_observer PUBLIC
@@ -55,6 +60,7 @@ target_include_directories(audio_observer PUBLIC
 target_compile_definitions(audio_observer PRIVATE
     AUDIO_OBSERVER_VERSION_STRING="${PROJECT_VERSION}")
 target_link_libraries(audio_observer
+    PUBLIC Threads::Threads
     PRIVATE $<BUILD_INTERFACE:audio_observer_options>)
 
 if(AUDIO_OBSERVER_BUILD_TESTS)
