@@ -1,0 +1,94 @@
+cmake_minimum_required(VERSION 3.22)
+
+project(audio-observer
+    VERSION 0.1.0
+    DESCRIPTION "Multi-stream audio health and timing diagnostics (never records audio)"
+    LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+option(AUDIO_OBSERVER_BUILD_TESTS "Build the audio-observer unit tests" ON)
+option(AUDIO_OBSERVER_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+set(AUDIO_OBSERVER_SANITIZE "none" CACHE STRING
+    "Sanitizers to build with: none, address (ASan + UBSan) or thread (TSan)")
+set_property(CACHE AUDIO_OBSERVER_SANITIZE PROPERTY STRINGS none address thread)
+
+# Shared warning and sanitizer settings, applied per target.
+add_library(audio_observer_options INTERFACE)
+if(MSVC)
+    target_compile_options(audio_observer_options INTERFACE
+        /W4 /permissive- /utf-8 /EHsc)
+    if(AUDIO_OBSERVER_WARNINGS_AS_ERRORS)
+        target_compile_options(audio_observer_options INTERFACE /WX)
+    endif()
+else()
+    target_compile_options(audio_observer_options INTERFACE
+        -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion)
+    if(AUDIO_OBSERVER_WARNINGS_AS_ERRORS)
+        target_compile_options(audio_observer_options INTERFACE -Werror)
+    endif()
+    if(AUDIO_OBSERVER_SANITIZE STREQUAL "address")
+        target_compile_options(audio_observer_options INTERFACE
+            -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
+        target_link_options(audio_observer_options INTERFACE -fsanitize=address,undefined)
+    elseif(AUDIO_OBSERVER_SANITIZE STREQUAL "thread")
+        target_compile_options(audio_observer_options INTERFACE
+            -fsanitize=thread -fno-omit-frame-pointer)
+        target_link_options(audio_observer_options INTERFACE -fsanitize=thread)
+    elseif(NOT AUDIO_OBSERVER_SANITIZE STREQUAL "none")
+        message(FATAL_ERROR "Unknown AUDIO_OBSERVER_SANITIZE value: ${AUDIO_OBSERVER_SANITIZE}")
+    endif()
+endif()
+
+find_package(Threads REQUIRED)
+
+# Core library: standard library only, plus the WASAPI backend on Windows.
+add_library(audio_observer STATIC
+    src/audio_format.cpp
+    src/backend.cpp
+    src/block_queue.cpp
+    src/dropout_detector.cpp
+    src/json_writer.cpp
+    src/meters.cpp
+    src/sample_clock.cpp
+    src/session.cpp
+    src/summary_json.cpp
+    src/synthetic_backend.cpp
+    src/version.cpp
+    src/wasapi_format.cpp)
+add_library(audio_observer::audio_observer ALIAS audio_observer)
+# The WASAPI backend needs only the Windows SDK.
+if(WIN32)
+    target_sources(audio_observer PRIVATE src/wasapi_backend.cpp)
+    target_link_libraries(audio_observer PUBLIC ole32)
+endif()
+target_include_directories(audio_observer PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
+target_compile_definitions(audio_observer PRIVATE
+    AUDIO_OBSERVER_VERSION_STRING="${PROJECT_VERSION}")
+target_link_libraries(audio_observer
+    PUBLIC Threads::Threads
+    PRIVATE $<BUILD_INTERFACE:audio_observer_options>)
+
+# Command-line tool. The parser and commands live in a library so tests can
+# run them in-process.
+add_library(audio_observer_cli STATIC src/cli/cli.cpp)
+target_include_directories(audio_observer_cli PUBLIC ${PROJECT_SOURCE_DIR}/src/cli)
+target_link_libraries(audio_observer_cli
+    PUBLIC audio_observer::audio_observer
+    PRIVATE audio_observer_options)
+
+add_executable(audio-observer src/cli/main.cpp)
+target_link_libraries(audio-observer PRIVATE audio_observer_cli audio_observer_options)
+if(WIN32)
+    # CommandLineToArgvW, for UTF-8 arguments (endpoint names).
+    target_link_libraries(audio-observer PRIVATE shell32)
+endif()
+
+if(AUDIO_OBSERVER_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

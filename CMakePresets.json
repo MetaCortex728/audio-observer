@@ -1,0 +1,110 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "AUDIO_OBSERVER_BUILD_TESTS": "ON",
+        "AUDIO_OBSERVER_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "default",
+      "displayName": "GCC",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_CXX_COMPILER": "g++" }
+    },
+    {
+      "name": "clang",
+      "displayName": "Clang",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_CXX_COMPILER": "clang++" }
+    },
+    {
+      "name": "asan",
+      "displayName": "GCC with ASan and UBSan",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AUDIO_OBSERVER_SANITIZE": "address"
+      }
+    },
+    {
+      "name": "tsan",
+      "displayName": "Clang with TSan",
+      "inherits": "clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AUDIO_OBSERVER_SANITIZE": "thread"
+      }
+    },
+    {
+      "name": "mingw",
+      "displayName": "MinGW-w64 cross-compile for Windows (tests built, not run)",
+      "inherits": "base",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/mingw-w64-x86_64.cmake"
+    },
+    {
+      "name": "msvc",
+      "displayName": "MSVC (run from a Visual Studio x64 developer environment)",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "cl",
+        "AUDIO_OBSERVER_BUILD_TESTS": "ON",
+        "AUDIO_OBSERVER_WARNINGS_AS_ERRORS": "ON"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "default", "configurePreset": "default" },
+    { "name": "clang", "configurePreset": "clang" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "tsan", "configurePreset": "tsan" },
+    { "name": "mingw", "configurePreset": "mingw" },
+    { "name": "msvc", "configurePreset": "msvc", "configuration": "Release" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" },
+      "filter": { "exclude": { "label": "hardware" } }
+    },
+    { "name": "default", "inherits": "base", "configurePreset": "default" },
+    { "name": "clang", "inherits": "base", "configurePreset": "clang" },
+    {
+      "name": "asan",
+      "inherits": "base",
+      "configurePreset": "asan",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:abort_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    },
+    {
+      "name": "tsan",
+      "inherits": "base",
+      "configurePreset": "tsan",
+      "environment": { "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1" }
+    },
+    { "name": "msvc", "inherits": "base", "configurePreset": "msvc", "configuration": "Release" },
+    {
+      "name": "msvc-hardware",
+      "displayName": "MSVC: opt-in smoke test on real audio hardware (opens the microphone)",
+      "configurePreset": "msvc",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true, "verbosity": "verbose" },
+      "execution": { "noTestsAction": "error" },
+      "filter": { "include": { "label": "hardware" } },
+      "environment": { "AUDIO_OBSERVER_HARDWARE": "1" }
+    }
+  ]
+}
