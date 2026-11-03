@@ -25,8 +25,20 @@ namespace {
 constexpr int kSkip = 77;
 
 std::string env(const char* name) {
+#ifdef _MSC_VER
+    // MSVC deprecates getenv (C4996), which warnings-as-errors turns into a build failure.
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+        return std::string();
+    }
+    std::string result(value);
+    std::free(value);
+    return result;
+#else
     const char* value = std::getenv(name);
     return value == nullptr ? std::string() : std::string(value);
+#endif
 }
 
 }  // namespace
