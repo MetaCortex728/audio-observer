@@ -36,9 +36,12 @@ void DropoutDetector::record(GlitchKind kind, std::int64_t sample_index, std::ui
     }
 }
 
-void DropoutDetector::observe(const DeliveredBlock& delivered) noexcept {
+std::uint32_t DropoutDetector::observe(const DeliveredBlock& delivered) noexcept {
     const FrameBlock& block = delivered.block;
     const HostTime host_time = block.host_time();
+    std::uint32_t counted_flags = delivered.flags;
+    // The stream's start, with nothing before it to be discontinuous with.
+    const bool stream_start = !report_.first_sample_index && delivered.dropped_blocks_before == 0;
 
     if (delivered.dropped_blocks_before > 0) {
         report_.overruns += delivered.dropped_blocks_before;
@@ -68,7 +71,10 @@ void DropoutDetector::observe(const DeliveredBlock& delivered) noexcept {
     report_.overlaps = clock_.overlap_count();
     report_.overlap_frames = clock_.overlap_frames();
 
-    if ((delivered.flags & block_flags::discontinuity) != 0) {
+    if ((delivered.flags & block_flags::discontinuity) != 0 && stream_start) {
+        report_.start_discontinuity = true;
+        counted_flags &= ~block_flags::discontinuity;
+    } else if ((delivered.flags & block_flags::discontinuity) != 0) {
         ++report_.discontinuities;
         record(GlitchKind::discontinuity, block.first_sample_index(), 0, host_time);
     }
@@ -95,6 +101,7 @@ void DropoutDetector::observe(const DeliveredBlock& delivered) noexcept {
             static_cast<double>(last_sample_index_ - *report_.first_sample_index) / seconds;
         report_.rate_offset_ppm = (rate / sample_rate_hz_ - 1.0) * 1e6;
     }
+    return counted_flags;
 }
 
 void DropoutDetector::finish(std::uint64_t queue_overruns,

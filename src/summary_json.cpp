@@ -48,6 +48,7 @@ void write_dropouts(JsonWriter& json, const DropoutReport& r, std::uint32_t samp
     json.key("overlaps").unsigned_integer(r.overlaps);
     json.key("overlap_frames").unsigned_integer(r.overlap_frames);
     json.key("discontinuities").unsigned_integer(r.discontinuities);
+    json.key("start_discontinuity").boolean(r.start_discontinuity);
     json.key("overruns").unsigned_integer(r.overruns);
     json.key("overrun_frames").unsigned_integer(r.overrun_frames);
     json.key("unplaced_overruns").unsigned_integer(r.unplaced_overruns);

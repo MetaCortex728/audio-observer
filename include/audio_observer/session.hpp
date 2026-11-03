@@ -69,7 +69,8 @@ struct StreamSummary {
     std::uint64_t blocks = 0;
     std::uint64_t frames = 0;
     /// Blocks carrying any device flag (block_flags), like the prototype's
-    /// callback status warnings.
+    /// callback status warnings, except a discontinuity flagged on the
+    /// stream's start (DropoutReport::start_discontinuity).
     std::uint64_t flagged_blocks = 0;
     MeterReading levels;                 ///< Whole stream.
     std::vector<MeterReading> channels;  ///< One per channel.

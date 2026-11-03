@@ -8,14 +8,15 @@ Decibel figures are dBFS with two decimals: a sample of magnitude 1.0 is 0 dBFS,
 
 ## Schema versions
 
+- `audio-observer.summary/3`: adds `start_discontinuity` to `dropouts`. A discontinuity flagged on a stream's first delivered block is recorded there instead of being counted in `discontinuities`, `total` and `warnings`. In version 2 it was counted, so every WASAPI stream reported one discontinuity at sample index 0.
 - `audio-observer.summary/2`: adds the session state `"timed_out"`. In version 1 a session ended by the wall-clock safety limit was reported as `"completed"` even though some stream had delivered fewer frames than requested.
 - `audio-observer.summary/1`: first version.
 
-## `meter`: session summary (`audio-observer.summary/2`)
+## `meter`: session summary (`audio-observer.summary/3`)
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema` | string | `"audio-observer.summary/2"` |
+| `schema` | string | `"audio-observer.summary/3"` |
 | `tool_version` | string | Version of `audio-observer` |
 | `backend` | string | `"wasapi"` or `"synthetic"` |
 | `retention` | string | Reminder that only scalar figures were kept |
@@ -42,7 +43,7 @@ Stream labels follow the prototype: `mic` (capture of `--mic`), `system` (loopba
 | `error` | string or null | Stream failure |
 | `blocks` | integer | Blocks metered, including a truncated last block |
 | `frames` | integer | Frames metered. A session that completes normally meters exactly `seconds_requested` × `sample_rate_hz` frames (rounded) per stream: the block that crosses that position is truncated and later blocks are discarded, so the count does not depend on scheduler granularity. It is lower when the stream ended, failed or was stopped first, or when the wall-clock safety limit (`seconds_requested` + 2 s) passed before the stream delivered enough frames; the session `state` is then `"timed_out"` |
-| `warnings` | integer | Blocks the device flagged (discontinuity or timestamp error), like the prototype's callback status count |
+| `warnings` | integer | Blocks the device flagged (discontinuity or timestamp error), like the prototype's callback status count. A discontinuity on the stream's first block is not counted (see `start_discontinuity`) |
 | `peak_dbfs` | number | Highest sample magnitude over all channels |
 | `rms_dbfs` | number | RMS over all channels and the whole session |
 | `peak_hold_dbfs` | number | Peak-hold meter at the end (1 s hold, then 20 dB/s decay) |
@@ -59,7 +60,8 @@ Stream labels follow the prototype: `mic` (capture of `--mic`), `system` (loopba
 | `total` | integer | Sum of the counts below (gaps, overlaps, discontinuities, overruns, timestamp errors, time regressions) |
 | `gaps`, `gap_frames` | integer | Jumps forward in the device's sample positions, and the frames missing |
 | `overlaps`, `overlap_frames` | integer | Jumps backward, and the frames repeated |
-| `discontinuities` | integer | Blocks the device flagged as discontinuous |
+| `discontinuities` | integer | Blocks after the stream's first that the device flagged as discontinuous |
+| `start_discontinuity` | bool | Whether the stream's first delivered block was flagged as discontinuous. There is no earlier block for it to be discontinuous with, so it is not a glitch: it is kept here, not counted in `discontinuities`, `total` or `warnings`, and has no event. If buffer overruns dropped blocks before the first delivered block, that block's flag counts as a normal discontinuity |
 | `overruns`, `overrun_frames` | integer | Blocks dropped because the consumer fell behind, and their frames. These are not counted as gaps. |
 | `unplaced_overruns` | integer | Overruns after the last received block, which have no position |
 | `timestamp_errors` | integer | Blocks the device flagged as having an unreliable timestamp |
@@ -82,8 +84,8 @@ Each event has:
 
 - Sample positions are the device position that WASAPI reports for each packet (`u64DevicePosition`), so gaps and overlaps are what the device's own clock says.
 - Host times are the performance-counter time at which the device captured a packet's first frame (`u64QPCPosition`), moved onto the host steady clock.
-- `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY` counts as a discontinuity and `AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR` as a timestamp error; both count as `warnings`. Packets flagged `AUDCLNT_BUFFERFLAGS_SILENT` are metered as zeros and are not warnings, since silence is normal.
-- A loopback stream receives nothing while its playback endpoint plays nothing. If playback stops part way through, the stream may not reach its frame count before the safety limit (`"timed_out"`), and whether the pause also shows as a gap depends on how the device position advances meanwhile. This has not yet been checked on real hardware.
+- `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY` counts as a discontinuity and `AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR` as a timestamp error; both count as `warnings`. WASAPI commonly sets `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY` on the first packet after a stream starts; on real hardware it did so on every capture and loopback stream, so expect `start_discontinuity` to be `true`. Packets flagged `AUDCLNT_BUFFERFLAGS_SILENT` are metered as zeros and are not warnings, since silence is normal.
+- A loopback stream receives nothing while its playback endpoint plays nothing; on real hardware, a session with nothing playing ended `"timed_out"` with the note that the playback stream delivered no frames. If playback stops part way through, the stream may not reach its frame count before the safety limit (`"timed_out"`), and whether the pause also shows as a gap depends on how the device position advances meanwhile. Playback stopping part way through has not yet been checked on real hardware.
 
 ## `inspect`: endpoint listing (`audio-observer.inspect/2`)
 

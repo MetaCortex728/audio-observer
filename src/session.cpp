@@ -96,10 +96,9 @@ bool drain(ActiveStream& active) {
         }
         ++active.blocks;
         active.frames += delivered.block.frame_count();
-        if (delivered.flags != 0) {
+        if (active.detector->observe(delivered) != 0) {
             ++active.flagged_blocks;
         }
-        active.detector->observe(delivered);
         active.meter->process(delivered.block);
         if (active.reached_target()) {
             active.overruns_at_target = active.queue->overrun_count();

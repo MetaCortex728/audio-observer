@@ -71,7 +71,7 @@ std::vector<std::string> with_faults(std::vector<std::string> args) {
 
 // Checks the figures that the injected kFaults must produce.
 void check_fault_figures(const json_check::Result& json, const std::string& seconds) {
-    CHECK(json.at("schema") == "audio-observer.summary/2");
+    CHECK(json.at("schema") == "audio-observer.summary/3");
     CHECK(json.at("backend") == "synthetic");
     CHECK(json.at("state") == "completed");
     CHECK(json.at("error") == "null");
@@ -92,6 +92,7 @@ void check_fault_figures(const json_check::Result& json, const std::string& seco
     CHECK(json.at("streams.mic.dropouts.overlaps") == "1");
     CHECK(json.at("streams.mic.dropouts.overlap_frames") == "240");
     CHECK(json.at("streams.mic.dropouts.discontinuities") == "1");
+    CHECK(json.at("streams.mic.dropouts.start_discontinuity") == "false");
     CHECK(json.at("streams.mic.dropouts.overruns") == "1");
     CHECK(json.at("streams.mic.dropouts.overrun_frames") == "480");
     CHECK(json.at("streams.mic.dropouts.events.0.kind") == "gap");
@@ -111,9 +112,12 @@ void check_fault_figures(const json_check::Result& json, const std::string& seco
     CHECK(json.at("streams.system.channels") == "2");
     CHECK(json.at("streams.system.frames") == std::to_string(frames));
     CHECK(json.at("streams.system.peak_dbfs") == "-6.00");
-    CHECK(json.at("streams.system.dropouts.total") == "1");
-    CHECK(json.at("streams.system.dropouts.discontinuities") == "1");
-    CHECK(json.at("streams.system.dropouts.events.0.sample_index") == "0");
+    // discontinuity@0 flags the first block: recorded, not counted.
+    CHECK(json.at("streams.system.warnings") == "0");
+    CHECK(json.at("streams.system.dropouts.total") == "0");
+    CHECK(json.at("streams.system.dropouts.discontinuities") == "0");
+    CHECK(json.at("streams.system.dropouts.start_discontinuity") == "true");
+    CHECK_FALSE(json.has("streams.system.dropouts.events.0.kind"));
     const double ppm = std::stod(json.at("streams.system.dropouts.rate_offset_ppm"));
     CHECK(ppm == doctest::Approx(150.0).epsilon(1e-4));
 }
@@ -277,7 +281,7 @@ TEST_CASE("cli meter reports a capture cut short by the safety limit as timed ou
     const Run r = run_cli({"meter", "--seconds", "1", "--fault", "mic:drift=-800000"});
     CHECK(r.code == cli::kExitFailure);
     check_scalars_only(r.json);
-    CHECK(r.json.at("schema") == "audio-observer.summary/2");
+    CHECK(r.json.at("schema") == "audio-observer.summary/3");
     CHECK(r.json.at("state") == "timed_out");
     CHECK(r.json.at("error") ==
           "Wall-clock safety limit passed before every stream delivered the requested frames "

@@ -97,6 +97,63 @@ TEST_CASE("overruns are told apart from device gaps") {
     CHECK(detector.clock().gap_count() == 1);
 }
 
+TEST_CASE("a discontinuity on the first block is recorded, not counted") {
+    DropoutDetector detector(1000);
+    CHECK(detector.observe(delivered(0, 100, 100, block_flags::discontinuity)) == 0);
+    for (int i = 1; i < 5; ++i) {
+        CHECK(detector.observe(delivered(i * 100, 100, 100 + i * 100)) == 0);
+    }
+    const DropoutReport& r = detector.report();
+    CHECK(r.start_discontinuity);
+    CHECK(r.discontinuities == 0);
+    CHECK(r.total() == 0);
+    CHECK(r.events.empty());
+}
+
+TEST_CASE("a discontinuity on a later block is counted") {
+    DropoutDetector detector(1000);
+    CHECK(detector.observe(delivered(0, 100, 100)) == 0);
+    CHECK(detector.observe(delivered(100, 100, 200, block_flags::discontinuity)) ==
+          block_flags::discontinuity);
+    const DropoutReport& r = detector.report();
+    CHECK_FALSE(r.start_discontinuity);
+    CHECK(r.discontinuities == 1);
+    CHECK(r.total() == 1);
+    REQUIRE(r.events.size() == 1);
+    check_event(r.events[0], GlitchKind::discontinuity, 100, 0, 200);
+}
+
+TEST_CASE("first and later discontinuities: only the later one is counted") {
+    DropoutDetector detector(1000);
+    // Other flags on the first block still count.
+    CHECK(detector.observe(delivered(0, 100, 100,
+                                     block_flags::discontinuity | block_flags::timestamp_error)) ==
+          block_flags::timestamp_error);
+    CHECK(detector.observe(delivered(100, 100, 200)) == 0);
+    CHECK(detector.observe(delivered(200, 100, 300, block_flags::discontinuity)) ==
+          block_flags::discontinuity);
+    const DropoutReport& r = detector.report();
+    CHECK(r.start_discontinuity);
+    CHECK(r.discontinuities == 1);
+    CHECK(r.timestamp_errors == 1);
+    CHECK(r.total() == 2);
+    REQUIRE(r.events.size() == 2);
+    check_event(r.events[0], GlitchKind::timestamp_error, 0, 0, 100);
+    check_event(r.events[1], GlitchKind::discontinuity, 200, 0, 300);
+}
+
+TEST_CASE("a flagged first block after dropped blocks is not the stream start") {
+    DropoutDetector detector(1000);
+    // The queue dropped the device's first blocks, so this flag has a
+    // predecessor to be discontinuous with.
+    CHECK(detector.observe(delivered(200, 100, 300, block_flags::discontinuity, 2, 200)) ==
+          block_flags::discontinuity);
+    const DropoutReport& r = detector.report();
+    CHECK_FALSE(r.start_discontinuity);
+    CHECK(r.discontinuities == 1);
+    CHECK(r.overruns == 2);
+}
+
 TEST_CASE("overruns with no later block are counted but not placed") {
     DropoutDetector detector(1000);
     detector.observe(delivered(0, 100, 100));
@@ -134,6 +191,7 @@ TEST_CASE("injected synthetic faults are found with exact counts and positions")
         {FaultKind::discontinuity, 48000, 0},
     };
     synthetic.endpoints[1].drift_ppm = 150.0;
+    synthetic.endpoints[1].faults = {{FaultKind::discontinuity, 0, 0}};
     SyntheticBackend backend(synthetic);
 
     SessionConfig config;
@@ -181,8 +239,14 @@ TEST_CASE("injected synthetic faults are found with exact counts and positions")
         std::chrono::duration<double>(r.events[0].host_time - r.first_host_time).count();
     CHECK(gap_seconds == doctest::Approx((6240.0 - 480.0) / 48000.0).epsilon(1e-6));
 
+    CHECK_FALSE(r.start_discontinuity);
+
+    // The loopback's first block is flagged: recorded, not a glitch or warning.
     const DropoutReport& system = summary.streams[1].dropouts;
+    CHECK(system.start_discontinuity);
     CHECK(system.total() == 0);
+    CHECK(system.events.empty());
+    CHECK(summary.streams[1].flagged_blocks == 0);
     REQUIRE(system.rate_offset_ppm);
     CHECK(*system.rate_offset_ppm == doctest::Approx(150.0).epsilon(1e-4));
     // The mic's estimate is biased by its 240-frame overlap (about -2500

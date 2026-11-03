@@ -46,7 +46,15 @@ struct DropoutReport {
     std::uint64_t gap_frames = 0;
     std::uint64_t overlaps = 0;
     std::uint64_t overlap_frames = 0;
+    /// Discontinuities flagged on blocks after the stream's first; see
+    /// start_discontinuity.
     std::uint64_t discontinuities = 0;
+    /// Whether the stream's first delivered block was flagged discontinuous.
+    /// WASAPI commonly flags the first packet after a stream starts, when
+    /// there is no earlier packet to be discontinuous with, so this is kept
+    /// apart and not counted as a glitch. If the queue dropped blocks before
+    /// the first delivered one, its flag counts as a normal discontinuity.
+    bool start_discontinuity = false;
     /// Blocks lost to queue overruns, and their frames.
     std::uint64_t overruns = 0;
     std::uint64_t overrun_frames = 0;
@@ -85,8 +93,10 @@ class DropoutDetector {
 public:
     explicit DropoutDetector(std::uint32_t sample_rate_hz, std::size_t max_events = 16);
 
-    /// Examines one delivered block.
-    void observe(const DeliveredBlock& delivered) noexcept;
+    /// Examines one delivered block. Returns the block's device flags that
+    /// count as warnings: its block_flags, less a discontinuity on the
+    /// stream's start (see DropoutReport::start_discontinuity).
+    std::uint32_t observe(const DeliveredBlock& delivered) noexcept;
 
     /// Reconciles with the queue's own totals once the stream has stopped,
     /// counting overruns that no delivered block reported.
