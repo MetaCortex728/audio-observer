@@ -1,0 +1,8 @@
+audio-observer
+Copyright 2026 MetaCortex728
+
+This product includes software developed by third parties:
+
+doctest (third_party/doctest/), used only by the unit tests.
+Copyright (c) 2016-2023 Viktor Kirilov
+Licensed under the MIT License; see third_party/doctest/LICENSE.txt.
