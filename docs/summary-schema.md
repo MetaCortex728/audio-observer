@@ -6,16 +6,21 @@ The output holds **scalars and short strings only**. The JSON writer (`include/a
 
 Decibel figures are dBFS with two decimals: a sample of magnitude 1.0 is 0 dBFS, and silence is reported as `-180.00`, as in the prototype. Times are seconds. Frame counts and sample positions count frames (one sample per channel) from the start of the stream.
 
-## `meter`: session summary (`audio-observer.summary/1`)
+## Schema versions
+
+- `audio-observer.summary/2`: adds the session state `"timed_out"`. In version 1 a session ended by the wall-clock safety limit was reported as `"completed"` even though some stream had delivered fewer frames than requested.
+- `audio-observer.summary/1`: first version.
+
+## `meter`: session summary (`audio-observer.summary/2`)
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema` | string | `"audio-observer.summary/1"` |
+| `schema` | string | `"audio-observer.summary/2"` |
 | `tool_version` | string | Version of `audio-observer` |
 | `backend` | string | `"synthetic"` (or `"wasapi"` once available) |
 | `retention` | string | Reminder that only scalar figures were kept |
-| `state` | string | `"completed"`, `"stopped"` (Ctrl+C) or `"failed"` |
-| `error` | string or null | Why the session failed, e.g. an endpoint that did not match exactly once, a stream that failed, or `"Microphone returned no frames"` |
+| `state` | string | `"completed"` (every stream delivered its frames or ended normally), `"timed_out"` (the wall-clock safety limit passed first, so the capture is short), `"stopped"` (Ctrl+C) or `"failed"` |
+| `error` | string or null | Why the session failed or timed out, e.g. which streams were short when the safety limit passed, an endpoint that did not match exactly once, a stream that failed, or `"Microphone returned no frames"` |
 | `note` | string or null | Caveat, e.g. that a playback stream delivered no frames, which is inconclusive because silence may produce no loopback callbacks |
 | `coexistence` | bool | Whether a second microphone client was opened |
 | `seconds_requested` | number | Requested duration, 1–60 |
@@ -36,7 +41,7 @@ Stream labels follow the prototype: `mic` (capture of `--mic`), `system` (loopba
 | `state` | string | Final stream state: `"stopped"`, `"finished"` (a finite source ended), `"failed"` |
 | `error` | string or null | Stream failure |
 | `blocks` | integer | Blocks metered, including a truncated last block |
-| `frames` | integer | Frames metered. A session that completes normally meters exactly `seconds_requested` × `sample_rate_hz` frames (rounded) per stream: the block that crosses that position is truncated and later blocks are discarded, so the count does not depend on scheduler granularity. It is lower when the stream ended, failed or was stopped first, or when the wall-clock safety limit (`seconds_requested` + 2 s) passed before the stream delivered enough frames |
+| `frames` | integer | Frames metered. A session that completes normally meters exactly `seconds_requested` × `sample_rate_hz` frames (rounded) per stream: the block that crosses that position is truncated and later blocks are discarded, so the count does not depend on scheduler granularity. It is lower when the stream ended, failed or was stopped first, or when the wall-clock safety limit (`seconds_requested` + 2 s) passed before the stream delivered enough frames; the session `state` is then `"timed_out"` |
 | `warnings` | integer | Blocks the device flagged (discontinuity or timestamp error), like the prototype's callback status count |
 | `peak_dbfs` | number | Highest sample magnitude over all channels |
 | `rms_dbfs` | number | RMS over all channels and the whole session |
@@ -89,6 +94,6 @@ Each event has:
 | Status | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | Failure: endpoint not matched exactly, stream failure, no microphone frames, backend not available |
+| 1 | Failure: endpoint not matched exactly, stream failure, session timed out (short capture), no microphone frames, backend not available |
 | 2 | Usage error, including a duration outside 1–60 seconds |
 | 130 | Stopped by Ctrl+C; every stream was closed |

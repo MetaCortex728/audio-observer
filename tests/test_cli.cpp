@@ -30,7 +30,17 @@ struct Run {
     json_check::Result json;
 };
 
-Run run_cli(const std::vector<std::string>& args, const std::atomic<bool>* stop = nullptr) {
+// Runs the CLI in-process. Unless the arguments name a backend, the
+// synthetic one is used, so no test opens a real device whatever the
+// platform's default backend is.
+Run run_cli(std::vector<std::string> args, const std::atomic<bool>* stop = nullptr) {
+    bool has_backend = false;
+    for (const std::string& arg : args) {
+        has_backend = has_backend || arg == "--backend";
+    }
+    if (!has_backend && !args.empty()) {
+        args.insert(args.end(), {"--backend", "synthetic"});
+    }
     std::ostringstream out;
     std::ostringstream err;
     Run r;
@@ -61,7 +71,7 @@ std::vector<std::string> with_faults(std::vector<std::string> args) {
 
 // Checks the figures that the injected kFaults must produce.
 void check_fault_figures(const json_check::Result& json, const std::string& seconds) {
-    CHECK(json.at("schema") == "audio-observer.summary/1");
+    CHECK(json.at("schema") == "audio-observer.summary/2");
     CHECK(json.at("backend") == "synthetic");
     CHECK(json.at("state") == "completed");
     CHECK(json.at("error") == "null");
@@ -227,6 +237,22 @@ TEST_CASE("cli meter fails on a device failure or a missing endpoint, still with
     check_scalars_only(r.json);
     CHECK(r.json.at("state") == "failed");
     CHECK(r.json.at("error") == "Expected one exact loopback endpoint for Speakers; got 0");
+}
+
+TEST_CASE("cli meter reports a capture cut short by the safety limit as timed out") {
+    // Real time; the mic clock runs at a fifth of its rate, so one second of
+    // frames would take five seconds, beyond the limit (seconds + 2 s).
+    const Run r = run_cli({"meter", "--seconds", "1", "--fault", "mic:drift=-800000"});
+    CHECK(r.code == cli::kExitFailure);
+    check_scalars_only(r.json);
+    CHECK(r.json.at("schema") == "audio-observer.summary/2");
+    CHECK(r.json.at("state") == "timed_out");
+    CHECK(r.json.at("error") ==
+          "Wall-clock safety limit passed before every stream delivered the requested frames "
+          "(short: mic)");
+    CHECK(std::stol(r.json.at("streams.mic.frames")) < 48000);
+    CHECK(r.json.at("streams.system.frames") == "48000");
+    CHECK(r.err.find("ERROR: Wall-clock safety limit passed") != std::string::npos);
 }
 
 TEST_CASE("cli meter stops on request with exit code 130") {

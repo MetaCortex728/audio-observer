@@ -16,6 +16,8 @@ const char* to_string(SessionState state) noexcept {
     switch (state) {
         case SessionState::completed:
             return "completed";
+        case SessionState::timed_out:
+            return "timed_out";
         case SessionState::stopped:
             return "stopped";
         case SessionState::failed:
@@ -178,7 +180,20 @@ SessionSummary Session::run(const std::atomic<bool>* stop_request) {
                     all_ended = false;
                 }
             }
-            if (all_ended || host_now() >= deadline) {
+            if (all_ended) {
+                break;
+            }
+            if (host_now() >= deadline) {
+                summary.state = SessionState::timed_out;
+                std::string short_streams;
+                for (const ActiveStream& active : streams) {
+                    if (!active.reached_target() &&
+                        active.stream->state() != StreamState::finished) {
+                        short_streams += (short_streams.empty() ? "" : ", ") + active.request.label;
+                    }
+                }
+                summary.error = "Wall-clock safety limit passed before every stream delivered "
+                                "the requested frames (short: " + short_streams + ")";
                 break;
             }
             if (!any) {

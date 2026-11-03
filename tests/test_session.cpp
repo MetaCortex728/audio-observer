@@ -174,7 +174,12 @@ TEST_CASE("the wall-clock safety limit ends a session whose stream delivers too 
     SessionConfig config = two_streams(1.0);
     config.safety_margin_seconds = 0.2;
     const SessionSummary summary = Session(backend, config).run();
-    CHECK(summary.state == SessionState::completed);
+    // A short capture is never reported as complete.
+    CHECK(summary.state == SessionState::timed_out);
+    CHECK(std::string(to_string(summary.state)) == "timed_out");
+    CHECK(summary.error ==
+          "Wall-clock safety limit passed before every stream delivered the requested frames "
+          "(short: mic)");
     CHECK(summary.elapsed_seconds >= 1.2);
     CHECK(summary.elapsed_seconds < 3.0);
     REQUIRE(summary.streams.size() == 2);

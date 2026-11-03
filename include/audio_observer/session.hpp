@@ -47,14 +47,17 @@ struct SessionConfig {
 
 /// How a session ended.
 enum class SessionState : std::uint8_t {
-    /// Every stream delivered the requested frames or ended normally, or the
-    /// wall-clock safety limit passed.
+    /// Every stream delivered the requested frames or ended normally.
     completed,
+    /// The wall-clock safety limit passed before every stream had delivered
+    /// the requested frames: the capture is short and must not be reported
+    /// as complete.
+    timed_out,
     stopped,    ///< Stopped on request (Ctrl+C in the CLI).
     failed,     ///< A stream could not be opened or started, or failed while running.
 };
 
-/// Returns "completed", "stopped" or "failed".
+/// Returns "completed", "timed_out", "stopped" or "failed".
 const char* to_string(SessionState state) noexcept;
 
 /// Scalar results for one stream. Holds no samples.
@@ -75,7 +78,7 @@ struct StreamSummary {
 
 struct SessionSummary {
     SessionState state = SessionState::completed;
-    std::string error;  ///< Empty unless state is failed.
+    std::string error;  ///< Empty unless state is failed or timed_out.
     double seconds_requested = 0.0;
     double elapsed_seconds = 0.0;
     std::vector<StreamSummary> streams;  ///< Streams that were opened, in request order.
@@ -84,7 +87,8 @@ struct SessionSummary {
 /// Runs a bounded session: opens every requested stream, starts them, feeds
 /// meters from the calling (consumer) thread and stops when every stream has
 /// delivered seconds x sample rate frames (the last block is truncated at
-/// that position) or ended, the wall-clock safety limit has passed, a stream fails or a stop is requested.
+/// that position) or ended, the wall-clock safety limit has passed (state
+/// timed_out), a stream fails or a stop is requested.
 /// Every opened stream is stopped and released before run() returns, in all
 /// of these cases and when an exception escapes.
 class Session {

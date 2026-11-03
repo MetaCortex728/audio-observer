@@ -14,7 +14,7 @@
 namespace audio_observer {
 
 /// Identifier written as "schema" in a session summary.
-inline constexpr const char* kSummarySchema = "audio-observer.summary/1";
+inline constexpr const char* kSummarySchema = "audio-observer.summary/2";
 /// Identifier written as "schema" in an endpoint listing.
 inline constexpr const char* kInspectSchema = "audio-observer.inspect/1";
 

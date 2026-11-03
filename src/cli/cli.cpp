@@ -298,7 +298,8 @@ int meter(const Options& options, Backend& backend, std::ostream& out, std::ostr
     context.backend = backend.name();
     context.coexistence = options.coexistence;
     int code = kExitOk;
-    if (summary.state == SessionState::failed) {
+    if (summary.state == SessionState::failed || summary.state == SessionState::timed_out) {
+        // A short capture is a failure of the measurement, not a result.
         code = kExitFailure;
     } else if (summary.state == SessionState::stopped) {
         code = kExitStopped;
