@@ -139,12 +139,50 @@ TEST_CASE("a real-time session runs for the requested time") {
     SyntheticBackend backend;
     const SessionSummary summary = Session(backend, two_streams(1.0)).run();
     CHECK(summary.state == SessionState::completed);
-    CHECK(summary.elapsed_seconds >= 1.0);
+    CHECK(summary.elapsed_seconds >= 1.0 - 0.011);  // the last block is due at 1 s
     CHECK(summary.elapsed_seconds < 3.0);
     for (const StreamSummary& s : summary.streams) {
-        // Blocks arrive every 10 ms; allow for scheduling at either end.
-        CHECK(s.frames >= 48000 - 4 * 480);
-        CHECK(s.frames <= 48000 + 480);
+        // Exactly one second of frames, however coarse the scheduler is.
+        CHECK(s.frames == 48000);
+        CHECK(s.blocks == 100);
+        CHECK(s.final_state == StreamState::stopped);
     }
     CHECK(backend.open_stream_count() == 0);
+}
+
+TEST_CASE("a session truncates the block that crosses its frame count") {
+    SyntheticConfig synthetic = fast_config(10.0);
+    synthetic.block_frames = 700;  // 48000 is not a multiple of 700
+    SyntheticBackend backend(synthetic);
+    const SessionSummary summary = Session(backend, two_streams(1.5)).run();
+    CHECK(summary.state == SessionState::completed);
+    REQUIRE(summary.streams.size() == 2);
+    for (const StreamSummary& s : summary.streams) {
+        CHECK(s.frames == 72000);
+        CHECK(s.blocks == 103);  // 102 whole blocks and 600 frames of the next
+        CHECK(s.dropouts.gaps == 0);
+        CHECK(s.dropouts.overruns == 0);
+    }
+    CHECK(backend.open_stream_count() == 0);
+    CHECK(backend.running_stream_count() == 0);
+}
+
+TEST_CASE("the wall-clock safety limit ends a session whose stream delivers too slowly") {
+    SyntheticConfig synthetic;  // real time
+    synthetic.endpoints[0].drift_ppm = -500000.0;  // mic delivers at half speed
+    SyntheticBackend backend(synthetic);
+    SessionConfig config = two_streams(1.0);
+    config.safety_margin_seconds = 0.2;
+    const SessionSummary summary = Session(backend, config).run();
+    CHECK(summary.state == SessionState::completed);
+    CHECK(summary.elapsed_seconds >= 1.2);
+    CHECK(summary.elapsed_seconds < 3.0);
+    REQUIRE(summary.streams.size() == 2);
+    CHECK(summary.streams[0].frames < 48000);
+    CHECK(summary.streams[1].frames == 48000);
+    CHECK(backend.running_stream_count() == 0);
+
+    SessionConfig bad = two_streams(1.0);
+    bad.safety_margin_seconds = -1.0;
+    CHECK_THROWS_AS(Session(backend, bad), std::invalid_argument);
 }

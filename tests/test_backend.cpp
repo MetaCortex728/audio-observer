@@ -33,9 +33,11 @@ struct Capture {
 
 // Runs a fast-paced stream to its end and records what arrived.
 Capture capture_all(CaptureStream& stream) {
-    BlockQueue queue(stream.info().format.channel_count, 4096, 64, stream.max_block_frames());
+    auto queue_owner = std::make_shared<BlockQueue>(stream.info().format.channel_count, 4096, 64,
+                                                    stream.max_block_frames());
+    BlockQueue& queue = *queue_owner;
     Capture result;
-    stream.start(queue);
+    stream.start(queue_owner);
     DeliveredBlock out;
     for (;;) {
         const bool done = stream.state() != StreamState::running;
@@ -128,10 +130,12 @@ TEST_CASE("synthetic streams are counted until released") {
         CHECK(backend.open_stream_count() == 3);
         CHECK(a->info().direction == StreamDirection::capture);
         CHECK(c->info().direction == StreamDirection::loopback);
-        BlockQueue queue(1, 100000, 1000, a->max_block_frames());
+        auto queue = std::make_shared<BlockQueue>(1, 100000, 1000, a->max_block_frames());
         a->start(queue);
         CHECK_THROWS_AS(a->start(queue), BackendError);
-        // Destroying a running stream stops it first.
+        CHECK_THROWS_AS(b->start(nullptr), BackendError);
+        // `queue` goes out of scope before `a`; the running stream keeps the
+        // queue alive until destroying it has stopped and joined its thread.
     }
     CHECK(backend.open_stream_count() == 0);
     CHECK(backend.running_stream_count() == 0);
@@ -285,9 +289,10 @@ TEST_CASE("synthetic jitter stays within its bound") {
 TEST_CASE("real-time synthetic streams follow the host clock and stop on request") {
     SyntheticBackend backend;  // real-time, unlimited
     auto stream = backend.open(kSyntheticOutputName, StreamDirection::loopback);
-    BlockQueue queue(2, 48000, 200, stream->max_block_frames());
+    auto queue_owner = std::make_shared<BlockQueue>(2, 48000, 200, stream->max_block_frames());
+    BlockQueue& queue = *queue_owner;
     const HostTime begin = host_now();
-    stream->start(queue);
+    stream->start(queue_owner);
     CHECK(backend.running_stream_count() == 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     stream->stop();
@@ -303,4 +308,40 @@ TEST_CASE("real-time synthetic streams follow the host clock and stop on request
     // No more frames than the elapsed time allows, and not far fewer.
     CHECK(static_cast<double>(frames) <= elapsed * 48000.0 + 480.0);
     CHECK(frames >= 4800);
+}
+
+TEST_CASE("a running stream keeps its queue alive when the caller releases it first") {
+    SUBCASE("real-time stream, caller's queue reference dropped while running") {
+        SyntheticBackend backend;  // real-time, unlimited
+        auto stream = backend.open(kSyntheticOutputName, StreamDirection::loopback);
+        {
+            auto queue = std::make_shared<BlockQueue>(2, 4800, 20, stream->max_block_frames());
+            stream->start(queue);
+        }  // the only caller reference is gone; the stream keeps writing
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        CHECK(stream->state() == StreamState::running);
+        stream.reset();  // stops, joins, then releases the last reference
+        CHECK(backend.running_stream_count() == 0);
+        CHECK(backend.open_stream_count() == 0);
+    }
+    SUBCASE("fast stream filling its queue, destroyed with the queue released first") {
+        SyntheticBackend backend(fast_config(60.0));
+        std::unique_ptr<CaptureStream> stream =
+            backend.open(kSyntheticMicName, StreamDirection::capture);
+        auto queue = std::make_shared<BlockQueue>(1, 4096, 64, stream->max_block_frames());
+        stream->start(queue);
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        queue.reset();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        stream.reset();
+        CHECK(backend.running_stream_count() == 0);
+    }
+    SUBCASE("backend destroyed before a running stream") {
+        auto backend = std::make_unique<SyntheticBackend>();
+        auto stream = backend->open(kSyntheticMicName, StreamDirection::capture);
+        stream->start(std::make_shared<BlockQueue>(1, 4800, 20, stream->max_block_frames()));
+        backend.reset();
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        stream.reset();
+    }
 }

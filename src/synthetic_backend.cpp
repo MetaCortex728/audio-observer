@@ -84,18 +84,23 @@ public:
     const StreamInfo& info() const noexcept override { return info_; }
     std::size_t max_block_frames() const noexcept override { return block_frames_; }
 
-    void start(BlockQueue& queue) override {
+    void start(std::shared_ptr<BlockQueue> queue) override {
+        if (!queue) {
+            throw BackendError("Stream " + info_.name + " needs a queue");
+        }
         if (state_.load() != StreamState::opened) {
             throw BackendError("Stream " + info_.name + " was already started");
         }
-        if (queue.channel_count() != info_.format.channel_count ||
-            queue.max_block_frames() < block_frames_) {
+        if (queue->channel_count() != info_.format.channel_count ||
+            queue->max_block_frames() < block_frames_) {
             throw BackendError("Queue does not match stream " + info_.name);
         }
         state_.store(StreamState::running);
         counters_->running.fetch_add(1);
         try {
-            thread_ = std::thread([this, &queue] { run(queue); });
+            // The thread holds its own reference: the queue lives at least
+            // as long as the thread, however the caller orders destruction.
+            thread_ = std::thread([this, queue = std::move(queue)] { run(*queue); });
         } catch (const std::exception& e) {
             counters_->running.fetch_sub(1);
             fail(std::string("cannot start thread: ") + e.what());

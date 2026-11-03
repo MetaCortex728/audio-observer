@@ -35,8 +35,8 @@ Stream labels follow the prototype: `mic` (capture of `--mic`), `system` (loopba
 | `sample_type` | string | Device sample type: `"float32"`, `"int16"`, `"int24"` or `"int32"` |
 | `state` | string | Final stream state: `"stopped"`, `"finished"` (a finite source ended), `"failed"` |
 | `error` | string or null | Stream failure |
-| `blocks` | integer | Blocks received |
-| `frames` | integer | Frames received |
+| `blocks` | integer | Blocks metered, including a truncated last block |
+| `frames` | integer | Frames metered. A session that completes normally meters exactly `seconds_requested` × `sample_rate_hz` frames (rounded) per stream: the block that crosses that position is truncated and later blocks are discarded, so the count does not depend on scheduler granularity. It is lower when the stream ended, failed or was stopped first, or when the wall-clock safety limit (`seconds_requested` + 2 s) passed before the stream delivered enough frames |
 | `warnings` | integer | Blocks the device flagged (discontinuity or timestamp error), like the prototype's callback status count |
 | `peak_dbfs` | number | Highest sample magnitude over all channels |
 | `rms_dbfs` | number | RMS over all channels and the whole session |

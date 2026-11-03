@@ -25,11 +25,18 @@ struct StreamRequest {
 
 struct SessionConfig {
     std::vector<StreamRequest> streams;
-    /// Requested duration. Must lie within [min_seconds, max_seconds].
+    /// Requested duration. Must lie within [min_seconds, max_seconds]. Each
+    /// stream delivers exactly round(seconds x sample rate) frames unless it
+    /// ends, fails or is stopped first.
     double seconds = 10.0;
     double min_seconds = 1.0;
     double max_seconds = 60.0;
     MeterConfig meter;
+    /// Wall-clock safety limit: the session ends after seconds +
+    /// safety_margin_seconds even if some stream has not delivered all of its
+    /// frames (for example because its device clock runs slow or the device
+    /// stalls). Must not be negative.
+    double safety_margin_seconds = 2.0;
     /// Capacity of each stream's queue, in seconds of audio.
     double queue_seconds = 2.0;
     /// Glitch events kept per stream (all are counted).
@@ -40,7 +47,9 @@ struct SessionConfig {
 
 /// How a session ended.
 enum class SessionState : std::uint8_t {
-    completed,  ///< Ran for the requested time, or every stream ended normally.
+    /// Every stream delivered the requested frames or ended normally, or the
+    /// wall-clock safety limit passed.
+    completed,
     stopped,    ///< Stopped on request (Ctrl+C in the CLI).
     failed,     ///< A stream could not be opened or started, or failed while running.
 };
@@ -73,8 +82,9 @@ struct SessionSummary {
 };
 
 /// Runs a bounded session: opens every requested stream, starts them, feeds
-/// meters from the calling (consumer) thread and stops when the duration has
-/// passed, every stream has ended, a stream fails or a stop is requested.
+/// meters from the calling (consumer) thread and stops when every stream has
+/// delivered seconds x sample rate frames (the last block is truncated at
+/// that position) or ended, the wall-clock safety limit has passed, a stream fails or a stop is requested.
 /// Every opened stream is stopped and released before run() returns, in all
 /// of these cases and when an exception escapes.
 class Session {

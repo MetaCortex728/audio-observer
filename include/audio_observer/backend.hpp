@@ -68,8 +68,16 @@ enum class StreamState : std::uint8_t {
 const char* to_string(StreamState state) noexcept;
 
 /// An open capture stream. Blocks are delivered from the stream's own thread
-/// into the queue given to start(). Destroying the stream stops it and
-/// releases the device.
+/// into the queue given to start().
+///
+/// Lifetime rules, which implementations must keep:
+/// - The stream shares ownership of the queue given to start() and holds it
+///   until its thread has been joined, so the queue cannot be destroyed while
+///   the thread can still write to it, whatever order the caller releases
+///   things in.
+/// - stop() and the destructor both stop delivery and join the stream's
+///   thread before returning, so no thread outlives the stream object.
+///   Destroying the stream also releases the device.
 class CaptureStream {
 public:
     virtual ~CaptureStream() = default;
@@ -81,11 +89,14 @@ public:
     /// Largest block the stream delivers, in frames.
     virtual std::size_t max_block_frames() const noexcept = 0;
 
-    /// Starts delivery into @p queue, which must outlive the stream (or the
-    /// next stop()) and have info().format.channel_count channels.
-    /// Throws BackendError when the stream cannot start.
-    virtual void start(BlockQueue& queue) = 0;
-    /// Stops delivery and waits for the stream's thread. Idempotent.
+    /// Starts delivery into @p queue, which must not be null and must have
+    /// info().format.channel_count channels. The stream keeps a reference to
+    /// the queue until its thread has stopped, so the caller may release its
+    /// own reference at any time. Throws BackendError when the stream cannot
+    /// start.
+    virtual void start(std::shared_ptr<BlockQueue> queue) = 0;
+    /// Stops delivery, waits for the stream's thread and releases the queue.
+    /// Idempotent.
     virtual void stop() noexcept = 0;
 
     /// Current state. Safe from any thread.
