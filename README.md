@@ -21,3 +21,11 @@ cmake --preset mingw   && cmake --build --preset mingw                          
 ```
 
 On Windows with Visual Studio 2022, use the `msvc` preset for all three steps. The tests use generated signals only and need no audio hardware.
+
+The build also produces the `audio-observer` command-line tool, with the prototype's `inspect` and `meter --seconds N [--coexistence]` commands. Until the WASAPI backend lands it runs on the synthetic backend, which generates deterministic signals and can inject faults (`--fault`, see `--help`). For example, to meter the synthetic microphone and headset loopback for two seconds:
+
+```sh
+./build/default/audio-observer meter --backend synthetic --seconds 2
+```
+
+It prints a JSON summary of scalar figures (levels, clipping, silence, gaps, overlaps, discontinuities, overruns), described in [`docs/summary-schema.md`](docs/summary-schema.md).

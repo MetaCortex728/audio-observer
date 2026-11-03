@@ -51,9 +51,11 @@ add_library(audio_observer STATIC
     src/backend.cpp
     src/block_queue.cpp
     src/dropout_detector.cpp
+    src/json_writer.cpp
     src/meters.cpp
     src/sample_clock.cpp
     src/session.cpp
+    src/summary_json.cpp
     src/synthetic_backend.cpp
     src/version.cpp)
 add_library(audio_observer::audio_observer ALIAS audio_observer)
@@ -64,6 +66,17 @@ target_compile_definitions(audio_observer PRIVATE
 target_link_libraries(audio_observer
     PUBLIC Threads::Threads
     PRIVATE $<BUILD_INTERFACE:audio_observer_options>)
+
+# Command-line tool. The parser and commands live in a library so tests can
+# run them in-process.
+add_library(audio_observer_cli STATIC src/cli/cli.cpp)
+target_include_directories(audio_observer_cli PUBLIC ${PROJECT_SOURCE_DIR}/src/cli)
+target_link_libraries(audio_observer_cli
+    PUBLIC audio_observer::audio_observer
+    PRIVATE audio_observer_options)
+
+add_executable(audio-observer src/cli/main.cpp)
+target_link_libraries(audio-observer PRIVATE audio_observer_cli audio_observer_options)
 
 if(AUDIO_OBSERVER_BUILD_TESTS)
     enable_testing()
