@@ -4,6 +4,7 @@ target_include_directories(doctest SYSTEM INTERFACE
 
 add_executable(audio_observer_tests
     main.cpp
+    test_core_types.cpp
     test_version.cpp)
 target_link_libraries(audio_observer_tests PRIVATE
     audio_observer::audio_observer doctest audio_observer_options)
