@@ -12,12 +12,23 @@
 #include "audio_observer/summary_json.hpp"
 #include "audio_observer/synthetic_backend.hpp"
 #include "audio_observer/version.hpp"
+#if defined(_WIN32)
+#include "audio_observer/wasapi_backend.hpp"
+#endif
 
 namespace audio_observer::cli {
 
+const char* default_backend() noexcept {
+#if defined(_WIN32)
+    return "wasapi";
+#else
+    return "synthetic";
+#endif
+}
+
 namespace {
 
-constexpr const char* kUsage = R"(usage: audio-observer inspect [options]
+constexpr const char* kUsageHead = R"(usage: audio-observer inspect [options]
        audio-observer meter [--seconds N] [--coexistence] [options]
 
 Captures audio streams and reports scalar health figures as JSON. Samples are
@@ -28,9 +39,12 @@ commands:
   meter                meter the microphone and the output loopback for N seconds
 
 options:
-  --backend NAME       synthetic or wasapi (default: synthetic)
-  --mic NAME           exact microphone endpoint name
+  --backend NAME       synthetic or wasapi (default: )";
+
+constexpr const char* kUsageTail = R"()
+  --mic NAME           exact microphone endpoint name, as listed by inspect
   --output NAME        exact playback endpoint name, captured as a loopback
+                       (meter --backend wasapi needs both)
   --seconds N          meter duration, whole seconds from 1 to 60 (default: 10)
   --coexistence        also open a second client on the microphone
   --help               show this help
@@ -43,6 +57,10 @@ synthetic backend only:
                        dropout@FRAME+N, overlap@FRAME+N, discontinuity@FRAME,
                        overrun@FRAME, fail@FRAME, drift=PPM, jitter=SECONDS
 )";
+
+std::string usage() {
+    return std::string(kUsageHead) + default_backend() + kUsageTail;
+}
 
 class UsageError : public std::runtime_error {
 public:
@@ -58,7 +76,7 @@ struct FaultSpec {
 
 struct Options {
     std::string command;
-    std::string backend = "synthetic";
+    std::string backend = default_backend();
     std::optional<std::string> mic;
     std::optional<std::string> output;
     int seconds = 10;
@@ -214,10 +232,17 @@ Options parse(const std::vector<std::string>& args) {
     if (options.backend != "synthetic" && (options.seed || options.fast || !options.faults.empty())) {
         throw UsageError("--seed, --fast and --fault need --backend synthetic");
     }
+    // Real endpoints have no default: they are chosen by exact name only.
+    if (options.backend != "synthetic" && options.command == "meter" &&
+        (!options.mic || !options.output)) {
+        throw UsageError("meter --backend " + options.backend +
+                         " needs --mic and --output; run inspect to list the endpoint names");
+    }
     return options;
 }
 
-// Default endpoint names per backend.
+// Endpoint names. Only the synthetic backend has defaults; parse() makes
+// sure a real backend's meter has both names.
 std::string default_mic(const Options& options) {
     return options.mic.value_or(kSyntheticMicName);
 }
@@ -228,7 +253,11 @@ std::string default_output(const Options& options) {
 
 std::unique_ptr<Backend> make_backend(const Options& options) {
     if (options.backend == "wasapi") {
+#if defined(_WIN32)
+        return make_wasapi_backend();
+#else
         throw BackendError("The wasapi backend is not available on this build");
+#endif
     }
     SyntheticConfig config;
     if (options.seed) {
@@ -262,10 +291,16 @@ std::unique_ptr<Backend> make_backend(const Options& options) {
 
 int inspect(const Options& options, Backend& backend, std::ostream& out, std::ostream& err) {
     const std::vector<EndpointInfo> endpoints = backend.endpoints();
-    std::vector<SelectionResult> selected{
-        {"mic", default_mic(options), StreamDirection::capture, {}},
-        {"system", default_output(options), StreamDirection::loopback, {}},
-    };
+    // A real backend checks only the names given, so inspect can list the
+    // endpoints before the user knows which names to pass.
+    const bool synthetic = options.backend == "synthetic";
+    std::vector<SelectionResult> selected;
+    if (synthetic || options.mic) {
+        selected.push_back({"mic", default_mic(options), StreamDirection::capture, {}});
+    }
+    if (synthetic || options.output) {
+        selected.push_back({"system", default_output(options), StreamDirection::loopback, {}});
+    }
     bool ok = true;
     for (SelectionResult& s : selected) {
         try {
@@ -298,8 +333,15 @@ int meter(const Options& options, Backend& backend, std::ostream& out, std::ostr
     context.backend = backend.name();
     context.coexistence = options.coexistence;
     int code = kExitOk;
-    if (summary.state == SessionState::failed || summary.state == SessionState::timed_out) {
+    if (summary.state == SessionState::timed_out) {
         // A short capture is a failure of the measurement, not a result.
+        code = kExitFailure;
+        for (const StreamSummary& s : summary.streams) {
+            if (s.label == "system" && s.frames == 0) {
+                context.note = "No playback frames; silence may produce no loopback callbacks";
+            }
+        }
+    } else if (summary.state == SessionState::failed) {
         code = kExitFailure;
     } else if (summary.state == SessionState::stopped) {
         code = kExitStopped;
@@ -332,7 +374,7 @@ int run(const std::vector<std::string>& args, std::ostream& out, std::ostream& e
         const std::atomic<bool>* stop_request) {
     for (const std::string& arg : args) {
         if (arg == "--help" || arg == "-h") {
-            out << kUsage;
+            out << usage();
             return kExitOk;
         }
         if (arg == "--version") {
@@ -344,7 +386,7 @@ int run(const std::vector<std::string>& args, std::ostream& out, std::ostream& e
     try {
         options = parse(args);
     } catch (const UsageError& e) {
-        err << kUsage << "\naudio-observer: error: " << e.what() << '\n';
+        err << usage() << "\naudio-observer: error: " << e.what() << '\n';
         return kExitUsage;
     }
     try {

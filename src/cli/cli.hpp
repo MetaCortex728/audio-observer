@@ -16,6 +16,10 @@ inline constexpr int kExitFailure = 1;
 inline constexpr int kExitUsage = 2;
 inline constexpr int kExitStopped = 130;  ///< Stopped by the user, as in the prototype.
 
+/// Backend used when --backend is not given: "wasapi" on Windows builds,
+/// "synthetic" elsewhere.
+const char* default_backend() noexcept;
+
 /// Runs the command line @p args (without the program name). JSON goes to
 /// @p out, messages to @p err. A meter session stops early when
 /// @p stop_request becomes true.

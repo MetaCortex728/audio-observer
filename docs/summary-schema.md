@@ -17,7 +17,7 @@ Decibel figures are dBFS with two decimals: a sample of magnitude 1.0 is 0 dBFS,
 | --- | --- | --- |
 | `schema` | string | `"audio-observer.summary/2"` |
 | `tool_version` | string | Version of `audio-observer` |
-| `backend` | string | `"synthetic"` (or `"wasapi"` once available) |
+| `backend` | string | `"wasapi"` or `"synthetic"` |
 | `retention` | string | Reminder that only scalar figures were kept |
 | `state` | string | `"completed"` (every stream delivered its frames or ended normally), `"timed_out"` (the wall-clock safety limit passed first, so the capture is short), `"stopped"` (Ctrl+C) or `"failed"` |
 | `error` | string or null | Why the session failed or timed out, e.g. which streams were short when the safety limit passed, an endpoint that did not match exactly once, a stream that failed, or `"Microphone returned no frames"` |
@@ -78,22 +78,31 @@ Each event has:
 | `stream_seconds` | number | `sample_index` relative to the first received frame, at the nominal rate |
 | `host_seconds` | number | Host time of the block that revealed the event, relative to the first block's host time |
 
-## `inspect`: endpoint listing (`audio-observer.inspect/1`)
+### With the `wasapi` backend
 
-`inspect` opens no streams. It lists the backend's endpoints and checks that `--mic` and `--output` each match exactly one endpoint; it exits with status 1 if either does not.
+- Sample positions are the device position that WASAPI reports for each packet (`u64DevicePosition`), so gaps and overlaps are what the device's own clock says.
+- Host times are the performance-counter time at which the device captured a packet's first frame (`u64QPCPosition`), moved onto the host steady clock.
+- `AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY` counts as a discontinuity and `AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR` as a timestamp error; both count as `warnings`. Packets flagged `AUDCLNT_BUFFERFLAGS_SILENT` are metered as zeros and are not warnings, since silence is normal.
+- A loopback stream receives nothing while its playback endpoint plays nothing. If playback stops part way through, the stream may not reach its frame count before the safety limit (`"timed_out"`), and whether the pause also shows as a gap depends on how the device position advances meanwhile. This has not yet been checked on real hardware.
+
+## `inspect`: endpoint listing (`audio-observer.inspect/2`)
+
+`inspect` opens no streams. It lists the backend's endpoints and checks that `--mic` and `--output` each match exactly one endpoint; it exits with status 1 if either does not. With the `wasapi` backend, only the names given are checked, so `inspect` with no names simply lists the endpoints; listing reads each endpoint's shared-mode mix format but initializes no stream. With the `synthetic` backend, missing names default to the synthetic endpoints.
+
+Version 2 (`audio-observer.inspect/2`) may omit `mic` or `system` from `selected` when no name was given; in version 1 both were always present.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `schema` | string | `"audio-observer.inspect/1"` |
+| `schema` | string | `"audio-observer.inspect/2"` |
 | `tool_version`, `backend` | string | As above |
 | `endpoints` | object | Keyed `"0"`, `"1"`, …; each has `name`, `direction` (`"input"` or `"output"`), `loopback` (bool: an output whose sound can be captured), `sample_rate_hz`, `channels` and `sample_type` |
-| `selected` | object | `mic` and `system`, each with `name`, `direction`, `ok` (bool) and `error` (string or null, naming the match count) |
+| `selected` | object | `mic` and `system` (each only when checked, see above), each with `name`, `direction`, `ok` (bool) and `error` (string or null, naming the match count) |
 
 ## Exit status
 
 | Status | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | Failure: endpoint not matched exactly, stream failure, session timed out (short capture), no microphone frames, backend not available |
+| 1 | Failure: endpoint not matched exactly, stream failure, session timed out (short capture), no microphone frames, backend not available on this platform |
 | 2 | Usage error, including a duration outside 1–60 seconds |
 | 130 | Stopped by Ctrl+C; every stream was closed |

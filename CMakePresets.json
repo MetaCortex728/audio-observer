@@ -75,7 +75,8 @@
       "name": "base",
       "hidden": true,
       "output": { "outputOnFailure": true },
-      "execution": { "noTestsAction": "error" }
+      "execution": { "noTestsAction": "error" },
+      "filter": { "exclude": { "label": "hardware" } }
     },
     { "name": "default", "inherits": "base", "configurePreset": "default" },
     { "name": "clang", "inherits": "base", "configurePreset": "clang" },
@@ -94,6 +95,16 @@
       "configurePreset": "tsan",
       "environment": { "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1" }
     },
-    { "name": "msvc", "inherits": "base", "configurePreset": "msvc", "configuration": "Release" }
+    { "name": "msvc", "inherits": "base", "configurePreset": "msvc", "configuration": "Release" },
+    {
+      "name": "msvc-hardware",
+      "displayName": "MSVC: opt-in smoke test on real audio hardware (opens the microphone)",
+      "configurePreset": "msvc",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true, "verbosity": "verbose" },
+      "execution": { "noTestsAction": "error" },
+      "filter": { "include": { "label": "hardware" } },
+      "environment": { "AUDIO_OBSERVER_HARDWARE": "1" }
+    }
   ]
 }

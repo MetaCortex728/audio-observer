@@ -45,7 +45,7 @@ endif()
 
 find_package(Threads REQUIRED)
 
-# Core library: standard library only, no audio API.
+# Core library: standard library only, plus the WASAPI backend on Windows.
 add_library(audio_observer STATIC
     src/audio_format.cpp
     src/backend.cpp
@@ -57,8 +57,14 @@ add_library(audio_observer STATIC
     src/session.cpp
     src/summary_json.cpp
     src/synthetic_backend.cpp
-    src/version.cpp)
+    src/version.cpp
+    src/wasapi_format.cpp)
 add_library(audio_observer::audio_observer ALIAS audio_observer)
+# The WASAPI backend needs only the Windows SDK.
+if(WIN32)
+    target_sources(audio_observer PRIVATE src/wasapi_backend.cpp)
+    target_link_libraries(audio_observer PUBLIC ole32)
+endif()
 target_include_directories(audio_observer PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
 target_compile_definitions(audio_observer PRIVATE
@@ -77,6 +83,10 @@ target_link_libraries(audio_observer_cli
 
 add_executable(audio-observer src/cli/main.cpp)
 target_link_libraries(audio-observer PRIVATE audio_observer_cli audio_observer_options)
+if(WIN32)
+    # CommandLineToArgvW, for UTF-8 arguments (endpoint names).
+    target_link_libraries(audio-observer PRIVATE shell32)
+endif()
 
 if(AUDIO_OBSERVER_BUILD_TESTS)
     enable_testing()

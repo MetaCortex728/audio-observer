@@ -13,7 +13,8 @@ add_executable(audio_observer_tests
     test_meters.cpp
     test_session.cpp
     test_spsc_ring_buffer.cpp
-    test_version.cpp)
+    test_version.cpp
+    test_wasapi_format.cpp)
 target_link_libraries(audio_observer_tests PRIVATE
     audio_observer::audio_observer audio_observer_cli doctest audio_observer_options Threads::Threads)
 target_compile_definitions(audio_observer_tests PRIVATE
@@ -22,3 +23,16 @@ target_compile_definitions(audio_observer_tests PRIVATE
 add_dependencies(audio_observer_tests audio-observer)
 
 add_test(NAME audio_observer_tests COMMAND audio_observer_tests)
+
+# Opt-in smoke test on real audio hardware (Windows only). It opens the
+# microphone, so it carries the "hardware" label, which the test presets
+# exclude, and it skips itself unless AUDIO_OBSERVER_HARDWARE=1.
+if(WIN32)
+    add_executable(audio_observer_hardware_tests hardware/test_wasapi_hardware.cpp)
+    target_link_libraries(audio_observer_hardware_tests PRIVATE
+        audio_observer::audio_observer doctest audio_observer_options)
+    add_test(NAME audio_observer_hardware_tests COMMAND audio_observer_hardware_tests)
+    set_tests_properties(audio_observer_hardware_tests PROPERTIES
+        LABELS hardware
+        SKIP_RETURN_CODE 77)
+endif()

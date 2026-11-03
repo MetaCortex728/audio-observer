@@ -160,20 +160,52 @@ TEST_CASE("cli rejects bad usage with exit code 2") {
           std::string::npos);
 }
 
+TEST_CASE("cli default backend is wasapi on Windows and synthetic elsewhere") {
+#if defined(_WIN32)
+    CHECK(std::string(cli::default_backend()) == "wasapi");
+#else
+    CHECK(std::string(cli::default_backend()) == "synthetic");
+#endif
+    std::ostringstream out;
+    std::ostringstream err;
+    CHECK(cli::run({"--help"}, out, err) == cli::kExitOk);
+    CHECK(out.str().find(std::string("(default: ") + cli::default_backend() + ")") !=
+          std::string::npos);
+}
+
+TEST_CASE("cli meter with a real backend needs exact endpoint names") {
+    // Rejected while parsing, before any backend is created.
+    for (const std::vector<std::string>& args :
+         std::vector<std::vector<std::string>>{{"meter", "--backend", "wasapi"},
+                                               {"meter", "--backend", "wasapi", "--mic", "A"},
+                                               {"meter", "--backend", "wasapi", "--output", "B"}}) {
+        const Run r = run_cli(args);
+        CHECK(r.code == cli::kExitUsage);
+        CHECK(r.out.empty());
+        CHECK(r.err.find("needs --mic and --output; run inspect") != std::string::npos);
+    }
+}
+
+#if !defined(_WIN32)
 TEST_CASE("cli reports that wasapi is not available on this build") {
-    for (const char* command : {"inspect", "meter"}) {
-        const Run r = run_cli({command, "--backend", "wasapi"});
+    const std::vector<std::vector<std::string>> commands = {
+        {"inspect", "--backend", "wasapi"},
+        {"meter", "--backend", "wasapi", "--mic", "A", "--output", "B"},
+    };
+    for (const auto& args : commands) {
+        const Run r = run_cli(args);
         CHECK(r.code == cli::kExitFailure);
         CHECK(r.out.empty());
         CHECK(r.err == "ERROR: The wasapi backend is not available on this build\n");
     }
 }
+#endif
 
 TEST_CASE("cli inspect lists endpoints and checks the selection") {
     Run r = run_cli({"inspect"});
     CHECK(r.code == cli::kExitOk);
     check_scalars_only(r.json);
-    CHECK(r.json.at("schema") == "audio-observer.inspect/1");
+    CHECK(r.json.at("schema") == "audio-observer.inspect/2");
     CHECK(r.json.at("endpoints.0.name") == "Synthetic Microphone");
     CHECK(r.json.at("endpoints.1.name") == "Synthetic Headset");
     CHECK(r.json.at("endpoints.1.direction") == "output");
