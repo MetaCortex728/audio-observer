@@ -7,6 +7,7 @@ find_package(Threads REQUIRED)
 add_executable(audio_observer_tests
     main.cpp
     test_core_types.cpp
+    test_meters.cpp
     test_spsc_ring_buffer.cpp
     test_version.cpp)
 target_link_libraries(audio_observer_tests PRIVATE

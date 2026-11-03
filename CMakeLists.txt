@@ -46,6 +46,7 @@ endif()
 # Core library: standard library only, no audio API.
 add_library(audio_observer STATIC
     src/audio_format.cpp
+    src/meters.cpp
     src/sample_clock.cpp
     src/version.cpp)
 add_library(audio_observer::audio_observer ALIAS audio_observer)
