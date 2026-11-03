@@ -2,6 +2,12 @@
 
 audio-observer captures several audio streams at once, for example a headset's microphone and what the same headset is playing, and reports how healthy they are and how their timing behaves: levels, clipping, silence, dropouts, discontinuities, buffer overruns and clock rate. It is a C++17 library and a command-line tool, and it runs for a bounded time (1 to 60 seconds) and then stops.
 
+## Intended use
+
+- **Checking a capture setup before it matters:** before recording, streaming or a call, confirm that a microphone and a playback loopback deliver every sample, without gaps, clipping or silent channels.
+- **Diagnosing intermittent audio problems:** crackles and dropouts become counted, timestamped events instead of impressions.
+- **Testing capture code:** the synthetic backend reproduces dropouts, overlaps, overruns, clock drift and jitter deterministically, so capture and analysis code can be tested without hardware.
+
 ## Privacy rule
 
 **No samples are written, exported or sent anywhere.** Audio is used in memory to compute numbers and then discarded. There are no audio files, uploads, transcription, speech models, background capture or autostart. The JSON output holds scalar figures and short strings only; the JSON writer has no way to write an array, and a test checks every command's output for this. The tool never changes default devices, routing, volumes or exclusive mode, and it only ever opens capture streams.
@@ -118,7 +124,15 @@ ctest --preset msvc-hardware
 
 **This C++ library (November 2026).** The prototype's level events carried local receipt times, not sample-accurate positions, and it counted callback warnings without telling dropouts, discontinuities and overruns apart. Measuring timing between streams (callback jitter, clock drift between devices, latency) needs sample-accurate clocks per stream, a capture path that does not allocate or lock, and tests with known answers, which hardware cannot provide. The prototype is therefore continued as a C++17 library with a lock-free ring buffer, per-stream sample clocks, dropout detection, a deterministic synthetic backend with fault injection for tests, and a WASAPI backend that keeps the prototype's safety rules: bounded runs, exact endpoint matching that fails closed, no routing or default-device changes, and only scalar results. The prototype is kept unchanged in [`prototype/`](prototype/), with its own README.
 
-The Python prototype was developed locally in October 2026 by Han, with OpenAI Codex as a coding assistant and without version control. The first commit of this repository imports it unchanged except for two README sentences that referred to people and tools outside this project.
+The Python prototype was developed locally in October 2026 by Han, with OpenAI Codex as a coding assistant and without version control. The first commit of this repository imports it unchanged except for two README sentences that referred to people and tools outside this project. The C++ library, from November 2026, was planned and reviewed by Han with Anthropic's Claude as a coding assistant.
+
+## Status
+
+Stage 1 of the roadmap is complete: the C++ library, the command-line tool, the synthetic and WASAPI backends, and dropout detection, tested in CI on Linux and Windows and run once on real hardware. Timing between streams (Stage 2) is next.
+
+## Ownership and contributors
+
+This is an independent personal project by Han ([MetaCortex728](https://github.com/MetaCortex728)). It is not owned by, or developed for, any employer, client, university or other organization, and no one else currently works on the repository.
 
 ## Roadmap
 
